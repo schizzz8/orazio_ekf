@@ -2,19 +2,27 @@
 #include <fstream>
 #include <ros/ros.h>
 #include <lucrezio_simulation_environments/LogicalImage.h>
+#include <nav_msgs/Odometry.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+
 #include <tf/tf.h>
-#include <tf/transform_listener.h>
 #include <tf/transform_datatypes.h>
 
 #include <Eigen/Geometry>
 
-typedef std::vector<lucrezio_simulation_environments::Model> Models;
+typedef std::vector<lucrezio_simulation_environments::Model> Landmarks;
 
 class MessageDumperNode{
   public:
     MessageDumperNode(ros::NodeHandle nh_,const std::string& filename):
-      _nh(nh_){
-      _logical_sub = _nh.subscribe("/gazebo/logical_camera_image",10,&MessageDumperNode::logicalCallback,this);
+      _nh(nh_),
+      _logical_image_sub(_nh,"/gazebo/logical_camera_image",30),
+      _twist_sub(_nh,"/lucrezio/odom",30),
+      _synchronizer(FilterSyncPolicy(1000),_logical_image_sub,_twist_sub){
+
+      _synchronizer.registerCallback(boost::bind(&MessageDumperNode::filterCallback, this, _1, _2));
 
       _out.open(filename);
       _seq=-1;
@@ -22,7 +30,8 @@ class MessageDumperNode{
       ROS_INFO("Starting data dumper node...");
     }
 
-    void logicalCallback(const lucrezio_simulation_environments::LogicalImage::ConstPtr& logical_image_msg){
+    void filterCallback(const lucrezio_simulation_environments::LogicalImage::ConstPtr& logical_image_msg,
+                        const nav_msgs::Odometry::ConstPtr& nav_msg){
 
       //check that the there's at list one landmark in the robot field-of-view
       if(logical_image_msg->models.empty()){
@@ -34,47 +43,37 @@ class MessageDumperNode{
       _seq++;
       _last_timestamp = logical_image_msg->header.stamp;
 
-      //save odometry
-      std::string error;
-      if (! _listener.waitForTransform ("/odom",
-                                        "/base_footprint",
-                                        _last_timestamp,
-                                        ros::Duration(0.5),
-                                        ros::Duration(0.5),
-                                        &error)) {
-        std::cerr << "MessageDumper: transform error from /odom to /base_footprint: " << error << std::endl;
-        return;
-      }
-      tf::StampedTransform odom_pose_t;
-      _listener.lookupTransform("/odom",
-                                "/base_footprint",
-                                _last_timestamp,
-                                odom_pose_t);
-      const Eigen::Isometry3f odom_transform=tfTransform2eigen(odom_pose_t);
-      char transform_filename[80];
-      sprintf(transform_filename,"odom_transform_%lu.txt",_seq);
-      serializeTransform(transform_filename,odom_transform);
+      //serialize twist
+      char twist_filename[80];
+      sprintf(twist_filename,"twist_%lu.txt",_seq);
+      serializeTwist(twist_filename,nav_msg->twist.twist);
 
-
-      //save landmarks
-      const Models &models=logical_image_msg->models;
-      char models_filename[80];
-      sprintf(models_filename,"models_%lu.txt",_seq);
-      serializeModels(models_filename,models);
+      //serialize landmarks
+      const Landmarks &landmarks=logical_image_msg->models;
+      char landmarks_filename[80];
+      sprintf(landmarks_filename,"landmarks_%lu.txt",_seq);
+      serializeLandmarks(landmarks_filename,landmarks);
 
       //write to output file
       _out << _last_timestamp << " ";
-      _out << transform_filename << " ";
-      _out << models_filename << std::endl;
+      _out << twist_filename << " ";
+      _out << landmarks_filename << std::endl;
 
+
+      //heart beat
       std::cerr << ".";
     }
 
   protected:
     ros::NodeHandle _nh;
     ros::Time _last_timestamp;
-    ros::Subscriber _logical_sub;
-    tf::TransformListener _listener;
+
+    //synchronized subscriber to logical_image and twist
+    message_filters::Subscriber<lucrezio_simulation_environments::LogicalImage> _logical_image_sub;
+    message_filters::Subscriber<nav_msgs::Odometry> _twist_sub;
+    typedef message_filters::sync_policies::ApproximateTime<lucrezio_simulation_environments::LogicalImage,
+    nav_msgs::Odometry> FilterSyncPolicy;
+    message_filters::Synchronizer<FilterSyncPolicy> _synchronizer;
 
     std::ofstream _out;
     size_t _seq;
@@ -96,7 +95,7 @@ class MessageDumperNode{
       return iso;
     }
 
-    void serializeModels(char* filename, const Models &models){
+    void serializeLandmarks(char* filename, const Landmarks &models){
       std::ofstream data;
       data.open(filename);
 
@@ -135,27 +134,18 @@ class MessageDumperNode{
       data.close();
     }
 
-    void serializeTransform(char* filename, const Eigen::Isometry3f &transform){
+    void serializeTwist(char* filename, const geometry_msgs::Twist& twist){
       std::ofstream data;
       data.open(filename);
 
-      data << transform.translation().x() << " "
-           << transform.translation().y() << " "
-           << transform.translation().z() << " ";
-
-      const Eigen::Matrix3f rotation = transform.linear().matrix();
-      data << rotation(0,0) << " "
-           << rotation(0,1) << " "
-           << rotation(0,2) << " "
-           << rotation(1,0) << " "
-           << rotation(1,1) << " "
-           << rotation(1,2) << " "
-           << rotation(2,0) << " "
-           << rotation(2,1) << " "
-           << rotation(2,2) << std::endl;
+      data << twist.linear.x << " "
+           << twist.linear.y << " "
+           << twist.linear.z << " "
+           << twist.angular.x << " "
+           << twist.angular.y << " "
+           << twist.angular.z << std::endl;
 
       data.close();
-
     }
 };
 
