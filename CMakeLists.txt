@@ -122,7 +122,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS src
-#  LIBRARIES orazio_ekf
+  LIBRARIES ekf_library
   CATKIN_DEPENDS geometry_msgs lucrezio_simulation_environments lucrezio_semantic_mapper nav_msgs roscpp rospy std_msgs
 #  DEPENDS system_lib
 )

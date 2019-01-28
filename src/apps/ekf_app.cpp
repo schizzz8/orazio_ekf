@@ -5,15 +5,11 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include <Eigen/Geometry>
-
-#include <object_detector/model.h>
-
-typedef std::vector<Model> ModelVector;
-typedef std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> > Vector2fVector;
+#include <ekf/ekf.h>
 
 void deserializeTwist(const char* filename, Eigen::Vector3f& linear, Eigen::Vector3f& angular);
 void deserializeLandmarks(const char * filename, ModelVector & models);
+void deserializeObservations(const char* filename, Vector2fVector& observations);
 void drawRobotTrajectory(const Vector2fVector& positions);
 void drawScene(const Eigen::Isometry3f& odom_transform, const ModelVector& landmarks);
 
@@ -25,11 +21,17 @@ cv::Mat image;
 
 int main(int argc, char** argv){
 
+  //world map (for visualization)
   image = cv::imread("output.png", CV_LOAD_IMAGE_COLOR);
 
+  //input data
   Eigen::Vector3f linear = Eigen::Vector3f::Zero();
   Eigen::Vector3f angular = Eigen::Vector3f::Zero();
   ModelVector landmarks;
+  Vector2fVector observations;
+
+  //EKF
+  EKF ekf;
 
   //read data
   bool first=true;
@@ -44,8 +46,8 @@ int main(int argc, char** argv){
       std::cerr << "Seq: " << seq << std::endl;
       std::istringstream iss(line);
       double timestamp;
-      std::string twist_filename,landmarks_filename;
-      iss>>timestamp>>twist_filename>>landmarks_filename;
+      std::string twist_filename,landmarks_filename,observations_filename;
+      iss>>timestamp>>twist_filename>>landmarks_filename>>observations_filename;
 
       //get odometry
       deserializeTwist(twist_filename.c_str(),linear,angular);
@@ -53,6 +55,8 @@ int main(int argc, char** argv){
       //get landmarks
       deserializeLandmarks(landmarks_filename.c_str(),landmarks);
 
+      //get observations
+      deserializeObservations(observations_filename.c_str(),observations);
 
       //draw
 //      drawScene(odom_transform,landmarks);
@@ -112,6 +116,22 @@ void deserializeLandmarks(const char * filename, ModelVector & models){
     }
   }
 
+  fin.close();
+}
+
+void deserializeObservations(const char* filename, Vector2fVector &observations){
+  std::ifstream fin(filename);
+  std::string line;
+
+  observations.clear();
+  if(fin.is_open()){
+    while(std::getline(fin,line)){
+      std::istringstream iss(line);
+      double px,py;
+      iss>>px>>py;
+      observations.push_back(Eigen::Vector2f(px,py));
+    }
+  }
   fin.close();
 }
 

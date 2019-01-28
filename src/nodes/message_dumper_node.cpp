@@ -54,11 +54,17 @@ class MessageDumperNode{
       sprintf(landmarks_filename,"landmarks_%lu.txt",_seq);
       serializeLandmarks(landmarks_filename,landmarks);
 
+      //serialize observations
+      Eigen::Isometry3f robot_pose = poseMsg2eigen(logical_image_msg->pose);
+      char observations_filename[80];
+      sprintf(observations_filename,"observations_%lu.txt",_seq);
+      serializeObservations(observations_filename,robot_pose,landmarks);
+
       //write to output file
       _out << _last_timestamp << " ";
       _out << twist_filename << " ";
-      _out << landmarks_filename << std::endl;
-
+      _out << landmarks_filename << " ";
+      _out << observations_filename << std::endl;
 
       //heart beat
       std::cerr << ".";
@@ -94,6 +100,35 @@ class MessageDumperNode{
       iso.linear()=q.toRotationMatrix();
       return iso;
     }
+
+    Eigen::Isometry3f poseMsg2eigen(const geometry_msgs::Pose &p){
+      Eigen::Isometry3f iso = Eigen::Isometry3f::Identity();
+      iso.translation().x()=p.position.x;
+      iso.translation().y()=p.position.y;
+      iso.translation().z()=p.position.z;
+      Eigen::Quaternionf q;
+      q.x()=p.orientation.x;
+      q.y()=p.orientation.y;
+      q.z()=p.orientation.z;
+      q.w()=p.orientation.w;
+      iso.linear()=q.toRotationMatrix();
+      return iso;
+    }
+
+    void serializeTwist(char* filename, const geometry_msgs::Twist& twist){
+      std::ofstream data;
+      data.open(filename);
+
+      data << twist.linear.x << " "
+           << twist.linear.y << " "
+           << twist.linear.z << " "
+           << twist.angular.x << " "
+           << twist.angular.y << " "
+           << twist.angular.z << std::endl;
+
+      data.close();
+    }
+
 
     void serializeLandmarks(char* filename, const Landmarks &models){
       std::ofstream data;
@@ -134,17 +169,25 @@ class MessageDumperNode{
       data.close();
     }
 
-    void serializeTwist(char* filename, const geometry_msgs::Twist& twist){
+    void serializeObservations(char* filename,
+                               const Eigen::Isometry3f& robot_pose,
+                               const Landmarks &models){
       std::ofstream data;
       data.open(filename);
 
-      data << twist.linear.x << " "
-           << twist.linear.y << " "
-           << twist.linear.z << " "
-           << twist.angular.x << " "
-           << twist.angular.y << " "
-           << twist.angular.z << std::endl;
+      const Eigen::Isometry3f inv_robot_pose = robot_pose.inverse();
 
+      int num_models=models.size();
+      for(int i=0; i<num_models; ++i){
+        const lucrezio_simulation_environments::Model &model = models[i];
+
+        tf::StampedTransform model_pose;
+        tf::poseMsgToTF(model.pose,model_pose);
+        const Eigen::Isometry3f model_transform=tfTransform2eigen(model_pose);
+        const Eigen::Vector3f model_position = inv_robot_pose*model_transform.translation();
+
+        data << model_position.x() << " " << model_position.y() << std::endl;
+      }
       data.close();
     }
 };

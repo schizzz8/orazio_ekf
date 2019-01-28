@@ -4,5 +4,6 @@ add_executable(ekf_app
 
 target_link_libraries(ekf_app
   ${catkin_LIBRARIES}
+  ekf_library
 )
 
