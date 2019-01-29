@@ -23,4 +23,8 @@ class EKF{
 
   private:
     Eigen::Vector3f transitionModel(Eigen::Vector3f mu, const float& ux, const float& utheta);
+
+    Eigen::Isometry2f v2t(const Eigen::Vector3f& v);
+    Eigen::Vector3f t2v(const Eigen::Isometry2f& T);
+    Eigen::Matrix2f dRt(const float& a);
 };

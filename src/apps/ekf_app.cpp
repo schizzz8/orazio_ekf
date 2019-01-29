@@ -58,6 +58,12 @@ int main(int argc, char** argv){
       //get observations
       deserializeObservations(observations_filename.c_str(),observations);
 
+      //prediction
+      ekf.prediction(linear.x(),angular.z());
+
+      //correction
+      ekf.correction(landmarks,observations);
+
       //draw
 //      drawScene(odom_transform,landmarks);
 //      cv::namedWindow("output",cv::WINDOW_NORMAL);
