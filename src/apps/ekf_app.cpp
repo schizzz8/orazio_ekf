@@ -12,6 +12,7 @@ void deserializeLandmarks(const char * filename, ModelVector & models);
 void deserializeObservations(const char* filename, Vector2fVector& observations);
 void drawRobotTrajectory(const Vector2fVector& positions);
 void drawScene(const Eigen::Isometry3f& odom_transform, const ModelVector& landmarks);
+void drawEstimate(const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma);
 
 //occupancy grid (for visualization)
 float resolution = 0.01;
@@ -158,4 +159,27 @@ void drawScene(const Eigen::Isometry3f& odom_transform, const ModelVector& landm
                        image.rows-(landmarks[i].position().y()-origin.y())*inv_resolution);
     cv::circle(image,landmark,20,cv::Scalar(0,0,255),10);
   }
+}
+
+void drawEstimate(const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma){
+
+  //estimated pose
+  cv::Point robot((mu.x()-origin.x())*inv_resolution,
+                  image.rows-(mu.y()-origin.y())*inv_resolution);
+  cv::Point robot_front((cos(mu.z())*0.5+mu.x()-origin.x())*inv_resolution,
+                        image.rows-(sin(mu.z())*0.5+mu.y()-origin.y())*inv_resolution);
+  cv::circle(image,robot,30,cv::Scalar(255,0,0),-1);
+  cv::line(image,robot,robot_front,cv::Scalar(0,255,0),5);
+
+  //estimated covariance
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> eigensolver(sigma.block<2,2>(0,0));
+  if (eigensolver.info() != Eigen::Success) abort();
+  Eigen::Vector2f eigenvalues = eigensolver.eigenvalues();
+  Eigen::Matrix2f eigenvectors = eigensolver.eigenvectors();
+  int i_max = (eigenvalues(0) > eigenvalues(1) ? 0 : 1);
+  int i_min = (eigenvalues(0) > eigenvalues(1) ? 1 : 0);
+  Eigen::Vector2f axis = mu.head(2)+eigenvectors.col(i_max)*eigenvalues(i_max);
+  double rotation = atan2(axis.y()-mu.y(),axis.x()-mu.x());
+  cv::Size axes(sqrt(eigenvalues(i_max))/2.0f,sqrt(eigenvalues(i_min))/2.0f);
+  cv::ellipse(image,robot,axes,rotation,0.0,360.0,cv::Scalar(0,0,255));
 }
