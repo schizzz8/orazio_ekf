@@ -1,9 +1,7 @@
 #pragma once
 
 #include <Eigen/Geometry>
-#include <object_detector/model.h>
 
-typedef std::vector<Model> ModelVector;
 typedef std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> > Vector2fVector;
 
 class EKF{
@@ -15,7 +13,7 @@ class EKF{
 
     void prediction(const float& ux, const float& utheta);
 
-    void correction(const ModelVector& landmarks, const Vector2fVector& observations);
+    void correction(const Vector2fVector& landmarks, const Vector2fVector& observations);
 
   protected:
     Eigen::Vector3f _mu;

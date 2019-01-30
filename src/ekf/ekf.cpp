@@ -35,7 +35,7 @@ void EKF::prediction(const float &ux, const float &utheta){
   _sigma = A*_sigma*A.transpose() + B*sigma_u*B.transpose();
 }
 
-void EKF::correction(const ModelVector &landmarks, const Vector2fVector &observations){
+void EKF::correction(const Vector2fVector &landmarks, const Vector2fVector &observations){
   if(observations.empty())
     return;
 
@@ -58,11 +58,11 @@ void EKF::correction(const ModelVector &landmarks, const Vector2fVector &observa
   for(int i=0; i<n_obs; ++i){
 
     //actual measurement zt
-    zt.block<2,1>(i*2,1) = observations[i];
+    zt.block<2,1>(i*2,0) = observations[i];
 
     //predicted measurement ht
-    lt = landmarks[i].position().head(2);
-    ht.block<2,1>(i*2,1) = inv_T*lt;
+    lt = landmarks[i];
+    ht.block<2,1>(i*2,0) = inv_T*lt;
 
     //build Jacobian
     C.block<2,2>(i*2,0) = -Rt;

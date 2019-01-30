@@ -49,16 +49,16 @@ class MessageDumperNode{
       serializeTwist(twist_filename,nav_msg->twist.twist);
 
       //serialize landmarks
+      Eigen::Isometry3f robot_pose = poseMsg2eigen(logical_image_msg->pose);
       const Landmarks &landmarks=logical_image_msg->models;
       char landmarks_filename[80];
       sprintf(landmarks_filename,"landmarks_%lu.txt",_seq);
-      serializeLandmarks(landmarks_filename,landmarks);
+      serializeLandmarks(landmarks_filename,robot_pose,landmarks);
 
       //serialize observations
-      Eigen::Isometry3f robot_pose = poseMsg2eigen(logical_image_msg->pose);
       char observations_filename[80];
       sprintf(observations_filename,"observations_%lu.txt",_seq);
-      serializeObservations(observations_filename,robot_pose,landmarks);
+      serializeObservations(observations_filename,landmarks);
 
       //write to output file
       _out << _last_timestamp << " ";
@@ -130,61 +130,37 @@ class MessageDumperNode{
     }
 
 
-    void serializeLandmarks(char* filename, const Landmarks &models){
+    void serializeLandmarks(char* filename,
+                            const Eigen::Isometry3f& robot_pose,
+                            const Landmarks &models){
       std::ofstream data;
       data.open(filename);
 
-      int num_models=models.size();
-      data << num_models << std::endl;
-
-      for(int i=0; i<num_models; ++i){
+      for(int i=0; i<models.size(); ++i){
         const lucrezio_simulation_environments::Model &model = models[i];
-        data << model.type << " ";
         tf::StampedTransform model_pose;
         tf::poseMsgToTF(model.pose,model_pose);
         const Eigen::Isometry3f model_transform=tfTransform2eigen(model_pose);
-        data << model_transform.translation().x() << " "
-             << model_transform.translation().y() << " "
-             << model_transform.translation().z() << " ";
-
-        const Eigen::Matrix3f model_rotation = model_transform.linear().matrix();
-        data << model_rotation(0,0) << " "
-             << model_rotation(0,1) << " "
-             << model_rotation(0,2) << " "
-             << model_rotation(1,0) << " "
-             << model_rotation(1,1) << " "
-             << model_rotation(1,2) << " "
-             << model_rotation(2,0) << " "
-             << model_rotation(2,1) << " "
-             << model_rotation(2,2) << " ";
-
-        data << model.min.x << " "
-             << model.min.y << " "
-             << model.min.z << " "
-             << model.max.x << " "
-             << model.max.y << " "
-             << model.max.z << std::endl;
+        const Eigen::Vector3f model_position=robot_pose*model_transform.translation();
+        data << model_position.x() << " "
+             << model_position.y() << std::endl;
 
       }
       data.close();
     }
 
     void serializeObservations(char* filename,
-                               const Eigen::Isometry3f& robot_pose,
                                const Landmarks &models){
       std::ofstream data;
       data.open(filename);
 
-      const Eigen::Isometry3f inv_robot_pose = robot_pose.inverse();
-
-      int num_models=models.size();
-      for(int i=0; i<num_models; ++i){
+      for(int i=0; i<models.size(); ++i){
         const lucrezio_simulation_environments::Model &model = models[i];
 
         tf::StampedTransform model_pose;
         tf::poseMsgToTF(model.pose,model_pose);
         const Eigen::Isometry3f model_transform=tfTransform2eigen(model_pose);
-        const Eigen::Vector3f model_position = inv_robot_pose*model_transform.translation();
+        const Eigen::Vector3f model_position = model_transform.translation();
 
         data << model_position.x() << " " << model_position.y() << std::endl;
       }

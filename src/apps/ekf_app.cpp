@@ -8,11 +8,10 @@
 #include <ekf/ekf.h>
 
 void deserializeTwist(const char* filename, Eigen::Vector3f& linear, Eigen::Vector3f& angular);
-void deserializeLandmarks(const char * filename, ModelVector & models);
+void deserializeLandmarks(const char * filename, Vector2fVector& landmarks);
 void deserializeObservations(const char* filename, Vector2fVector& observations);
 void drawRobotTrajectory(const Vector2fVector& positions);
-void drawScene(const Eigen::Isometry3f& odom_transform, const ModelVector& landmarks);
-void drawEstimate(const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma);
+void drawScene(const Vector2fVector& landmarks, const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma);
 
 //occupancy grid (for visualization)
 float resolution = 0.01;
@@ -22,25 +21,20 @@ cv::Mat image;
 
 int main(int argc, char** argv){
 
-  //world map (for visualization)
-  image = cv::imread("output.png", CV_LOAD_IMAGE_COLOR);
-
   //input data
   Eigen::Vector3f linear = Eigen::Vector3f::Zero();
   Eigen::Vector3f angular = Eigen::Vector3f::Zero();
-  ModelVector landmarks;
-  Vector2fVector observations;
+  Vector2fVector landmarks,observations;
 
   //EKF
   EKF ekf;
 
   //read data
-  bool first=true;
   int seq=-1;
   std::string line;
   std::ifstream data(argv[1]);
   if(data.is_open()){
-    if(std::getline(data,line)){
+    while(std::getline(data,line)){
 
       //parse line
       seq++;
@@ -52,12 +46,20 @@ int main(int argc, char** argv){
 
       //get odometry
       deserializeTwist(twist_filename.c_str(),linear,angular);
+      std::cerr << "Read odometry from: " << twist_filename << std::endl;
+      std::cerr << "ux: " << linear.x() << " - utheta: " << angular.z() << std::endl;
 
       //get landmarks
       deserializeLandmarks(landmarks_filename.c_str(),landmarks);
+      std::cerr << "Read landmarks from: " << landmarks_filename << std::endl;
+      for(int i=0; i<landmarks.size(); ++i)
+        std::cerr << landmarks[i].transpose() << std::endl;
 
       //get observations
       deserializeObservations(observations_filename.c_str(),observations);
+      std::cerr << "Read observations from: " << observations_filename << std::endl;
+      for(int i=0; i<observations.size(); ++i)
+        std::cerr << observations[i].transpose() << std::endl;
 
       //prediction
       ekf.prediction(linear.x(),angular.z());
@@ -66,10 +68,10 @@ int main(int argc, char** argv){
       ekf.correction(landmarks,observations);
 
       //draw
-//      drawScene(odom_transform,landmarks);
-//      cv::namedWindow("output",cv::WINDOW_NORMAL);
-//      cv::imshow("output",image);
-//      cv::waitKey();
+      drawScene(landmarks,ekf.mu(),ekf.sigma());
+      cv::namedWindow("output",cv::WINDOW_NORMAL);
+      cv::imshow("output",image);
+      cv::waitKey(0);
     }
   }
 
@@ -93,33 +95,17 @@ void deserializeTwist(const char* filename, Eigen::Vector3f& linear, Eigen::Vect
   fin.close();
 }
 
-void deserializeLandmarks(const char * filename, ModelVector & models){
+void deserializeLandmarks(const char * filename, Vector2fVector &landmarks){
   std::ifstream fin(filename);
   std::string line;
 
-  models.clear();
+  landmarks.clear();
   if(fin.is_open()){
     while(std::getline(fin,line)){
       std::istringstream iss(line);
-      std::string type;
-      double px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22;
-      double minx,miny,minz,maxx,maxy,maxz;
-      iss >> type;
-
-      if(type.length() < 3)
-        continue;
-
-      Eigen::Isometry3f model_pose=Eigen::Isometry3f::Identity();
-      iss >>px>>py>>pz>>r00>>r01>>r02>>r10>>r11>>r12>>r20>>r21>>r22;
-      model_pose.translation()=Eigen::Vector3f(px,py,pz);
-      Eigen::Matrix3f R;
-      R << r00,r01,r02,r10,r11,r12,r20,r21,r22;
-      model_pose.linear().matrix() = R;
-      iss >> minx>>miny>>minz>>maxx>>maxy>>maxz;
-      Eigen::Vector3f min(minx,miny,minz);
-      Eigen::Vector3f max(maxx,maxy,maxz);
-
-      models.push_back(Model(type,model_pose,min,max));
+      double px,py;
+      iss>>px>>py;
+      landmarks.push_back(Eigen::Vector2f(px,py));
     }
   }
 
@@ -142,28 +128,22 @@ void deserializeObservations(const char* filename, Vector2fVector &observations)
   fin.close();
 }
 
-void drawScene(const Eigen::Isometry3f& odom_transform, const ModelVector& landmarks){
+void drawScene(const Vector2fVector &landmarks, const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma){
 
-  //robot
-  cv::Point robot((odom_transform.translation().x()-origin.x())*inv_resolution,
-      image.rows-(odom_transform.translation().y()-origin.y())*inv_resolution);
-  Eigen::Vector3f euler = odom_transform.linear().eulerAngles(0,1,2);
-  cv::Point robot_front((cos(euler.z())*0.5+odom_transform.translation().x()-origin.x())*inv_resolution,
-                        image.rows-(sin(euler.z())*0.5+odom_transform.translation().y()-origin.y())*inv_resolution);
-  cv::circle(image,robot,30,cv::Scalar(255,0,0),-1);
-  cv::line(image,robot,robot_front,cv::Scalar(0,255,0),5);
+  //world map (for visualization)
+  image = cv::imread("output.png", CV_LOAD_IMAGE_COLOR);
 
   //landmarks
+  std::cerr << "Landmarks:" << std::endl;
   for(int i=0; i<landmarks.size(); ++i){
-    cv::Point landmark((landmarks[i].position().x()-origin.x())*inv_resolution,
-                       image.rows-(landmarks[i].position().y()-origin.y())*inv_resolution);
+    std::cerr << i << ": " << landmarks[i].transpose() << std::endl;
+    cv::Point landmark((landmarks[i].x()-origin.x())*inv_resolution,
+                       image.rows-(landmarks[i].y()-origin.y())*inv_resolution);
     cv::circle(image,landmark,20,cv::Scalar(0,0,255),10);
   }
-}
-
-void drawEstimate(const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma){
 
   //estimated pose
+  std::cerr << "Robot pose: " << mu.transpose() << std::endl;
   cv::Point robot((mu.x()-origin.x())*inv_resolution,
                   image.rows-(mu.y()-origin.y())*inv_resolution);
   cv::Point robot_front((cos(mu.z())*0.5+mu.x()-origin.x())*inv_resolution,
@@ -172,14 +152,19 @@ void drawEstimate(const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma){
   cv::line(image,robot,robot_front,cv::Scalar(0,255,0),5);
 
   //estimated covariance
-  Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> eigensolver(sigma.block<2,2>(0,0));
-  if (eigensolver.info() != Eigen::Success) abort();
-  Eigen::Vector2f eigenvalues = eigensolver.eigenvalues();
-  Eigen::Matrix2f eigenvectors = eigensolver.eigenvectors();
-  int i_max = (eigenvalues(0) > eigenvalues(1) ? 0 : 1);
-  int i_min = (eigenvalues(0) > eigenvalues(1) ? 1 : 0);
-  Eigen::Vector2f axis = mu.head(2)+eigenvectors.col(i_max)*eigenvalues(i_max);
-  double rotation = atan2(axis.y()-mu.y(),axis.x()-mu.x());
-  cv::Size axes(sqrt(eigenvalues(i_max))/2.0f,sqrt(eigenvalues(i_min))/2.0f);
-  cv::ellipse(image,robot,axes,rotation,0.0,360.0,cv::Scalar(0,0,255));
+//  Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> eigensolver(sigma.block<2,2>(0,0));
+//  if (eigensolver.info() != Eigen::Success){
+//    std::cerr << "covariance eigenvalues decomposition failed!" << std::endl;
+//    abort();
+//  }
+//  Eigen::Vector2f eigenvalues = eigensolver.eigenvalues();
+//  Eigen::Matrix2f eigenvectors = eigensolver.eigenvectors();
+////  std::cerr << "Eigen values: " << eigenvalues.transpose() << std::endl;
+////  std::cerr << "Eigen vectors: " << std::endl << eigenvectors << std::endl;
+//  int i_max = (eigenvalues(0) > eigenvalues(1) ? 0 : 1);
+//  int i_min = (eigenvalues(0) > eigenvalues(1) ? 1 : 0);
+//  Eigen::Vector2f axis = mu.head(2)+eigenvectors.col(i_max)*eigenvalues(i_max);
+//  double rotation = atan2(axis.y()-mu.y(),axis.x()-mu.x());
+//  cv::Size axes(sqrt(eigenvalues(i_max))/2.0f,sqrt(eigenvalues(i_min))/2.0f);
+//  cv::ellipse(image,robot,axes,rotation,0.0,360.0,cv::Scalar(0,0,255));
 }

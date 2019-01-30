@@ -4,6 +4,7 @@ add_executable(ekf_app
 
 target_link_libraries(ekf_app
   ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
   ekf_library
 )
 
