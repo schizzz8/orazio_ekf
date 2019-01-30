@@ -3,5 +3,6 @@ add_library(ekf_library
 )
 
 target_link_libraries(ekf_library
+  yaml-cpp
   ${catkin_LIBRARIES}
 )

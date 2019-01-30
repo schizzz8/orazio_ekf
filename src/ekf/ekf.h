@@ -1,8 +1,18 @@
 #pragma once
-
+#include <iostream>
+#include <map>
 #include <Eigen/Geometry>
+#include <yaml-cpp/yaml.h>
 
 typedef std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> > Vector2fVector;
+typedef std::map<std::string,Eigen::Vector2f, std::less<std::string>,
+Eigen::aligned_allocator<std::pair<const std::string, Eigen::Vector2f> > > StringVector2fMap;
+
+struct Observation{
+    std::string _id;
+    Eigen::Vector2f _position;
+};
+typedef std::vector<Observation> ObservationVector;
 
 class EKF{
   public:
@@ -13,13 +23,18 @@ class EKF{
 
     void prediction(const float& ux, const float& utheta);
 
-    void correction(const Vector2fVector& landmarks, const Vector2fVector& observations);
+    void correction(const ObservationVector& observations);
+
 
   protected:
     Eigen::Vector3f _mu;
     Eigen::Matrix3f _sigma;
 
+    StringVector2fMap _landmarks;
+
   private:
+    void readLandmarks();
+
     Eigen::Vector3f transitionModel(Eigen::Vector3f mu, const float& ux, const float& utheta);
 
     Eigen::Isometry2f v2t(const Eigen::Vector3f& v);

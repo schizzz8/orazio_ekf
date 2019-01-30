@@ -7,11 +7,10 @@
 
 #include <ekf/ekf.h>
 
-void deserializeTwist(const char* filename, Eigen::Vector3f& linear, Eigen::Vector3f& angular);
-void deserializeLandmarks(const char * filename, Vector2fVector& landmarks);
-void deserializeObservations(const char* filename, Vector2fVector& observations);
+void deserializeVelocities(const char* filename, float& linear, float& angular);
+void deserializeObservations(const char* filename, ObservationVector& observations);
 void drawRobotTrajectory(const Vector2fVector& positions);
-void drawScene(const Vector2fVector& landmarks, const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma);
+void drawScene(const ObservationVector& observations, const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma);
 
 //occupancy grid (for visualization)
 float resolution = 0.01;
@@ -22,9 +21,8 @@ cv::Mat image;
 int main(int argc, char** argv){
 
   //input data
-  Eigen::Vector3f linear = Eigen::Vector3f::Zero();
-  Eigen::Vector3f angular = Eigen::Vector3f::Zero();
-  Vector2fVector landmarks,observations;
+  float linear,angular;
+  ObservationVector observations;
 
   //EKF
   EKF ekf;
@@ -41,34 +39,28 @@ int main(int argc, char** argv){
       std::cerr << "Seq: " << seq << std::endl;
       std::istringstream iss(line);
       double timestamp;
-      std::string twist_filename,landmarks_filename,observations_filename;
-      iss>>timestamp>>twist_filename>>landmarks_filename>>observations_filename;
+      std::string velocities_filename,observations_filename;
+      iss>>timestamp>>velocities_filename>>observations_filename;
 
-      //get odometry
-      deserializeTwist(twist_filename.c_str(),linear,angular);
-      std::cerr << "Read odometry from: " << twist_filename << std::endl;
-      std::cerr << "ux: " << linear.x() << " - utheta: " << angular.z() << std::endl;
-
-      //get landmarks
-      deserializeLandmarks(landmarks_filename.c_str(),landmarks);
-      std::cerr << "Read landmarks from: " << landmarks_filename << std::endl;
-      for(int i=0; i<landmarks.size(); ++i)
-        std::cerr << landmarks[i].transpose() << std::endl;
+      //get velocities
+      deserializeVelocities(velocities_filename.c_str(),linear,angular);
+      std::cerr << "Read velocities from: " << velocities_filename << std::endl;
+      std::cerr << "ux: " << linear << " - utheta: " << angular << std::endl;
 
       //get observations
       deserializeObservations(observations_filename.c_str(),observations);
       std::cerr << "Read observations from: " << observations_filename << std::endl;
       for(int i=0; i<observations.size(); ++i)
-        std::cerr << observations[i].transpose() << std::endl;
+        std::cerr << observations[i]._position.transpose() << std::endl;
 
       //prediction
-      ekf.prediction(linear.x(),angular.z());
+      ekf.prediction(linear,angular);
 
       //correction
-      ekf.correction(landmarks,observations);
+      ekf.correction(observations);
 
       //draw
-      drawScene(landmarks,ekf.mu(),ekf.sigma());
+      drawScene(observations,ekf.mu(),ekf.sigma());
       cv::namedWindow("output",cv::WINDOW_NORMAL);
       cv::imshow("output",image);
       cv::waitKey(0);
@@ -78,68 +70,54 @@ int main(int argc, char** argv){
   return 0;
 }
 
-void deserializeTwist(const char* filename, Eigen::Vector3f& linear, Eigen::Vector3f& angular){
+void deserializeVelocities(const char* filename, float& linear, float& angular){
   std::ifstream fin(filename);
   std::string line;
 
   if(fin.is_open()){
     if(std::getline(fin,line)){
       std::istringstream iss(line);
-      double lx,ly,lz,ax,ay,az;
-      iss >>lx>>ly>>lz>>ax>>ay>>az;
-      linear=Eigen::Vector3f(lx,ly,lz);
-      angular=Eigen::Vector3f(ax,ay,az);
+      double lx,az;
+      iss >>lx>>az;
+      linear=lx;
+      angular=az;
     }
   }
 
   fin.close();
 }
 
-void deserializeLandmarks(const char * filename, Vector2fVector &landmarks){
-  std::ifstream fin(filename);
-  std::string line;
-
-  landmarks.clear();
-  if(fin.is_open()){
-    while(std::getline(fin,line)){
-      std::istringstream iss(line);
-      double px,py;
-      iss>>px>>py;
-      landmarks.push_back(Eigen::Vector2f(px,py));
-    }
-  }
-
-  fin.close();
-}
-
-void deserializeObservations(const char* filename, Vector2fVector &observations){
+void deserializeObservations(const char* filename, ObservationVector &observations){
   std::ifstream fin(filename);
   std::string line;
 
   observations.clear();
+  Observation o;
   if(fin.is_open()){
     while(std::getline(fin,line)){
       std::istringstream iss(line);
+      std::string id;
+      iss>>id;
       double px,py;
       iss>>px>>py;
-      observations.push_back(Eigen::Vector2f(px,py));
+      o._id = id;
+      o._position = Eigen::Vector2f(px,py);
+      observations.push_back(o);
     }
   }
   fin.close();
 }
 
-void drawScene(const Vector2fVector &landmarks, const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma){
+void drawScene(const ObservationVector &observations, const Eigen::Vector3f& mu, const Eigen::Matrix3f& sigma){
 
   //world map (for visualization)
   image = cv::imread("output.png", CV_LOAD_IMAGE_COLOR);
 
-  //landmarks
-  std::cerr << "Landmarks:" << std::endl;
-  for(int i=0; i<landmarks.size(); ++i){
-    std::cerr << i << ": " << landmarks[i].transpose() << std::endl;
-    cv::Point landmark((landmarks[i].x()-origin.x())*inv_resolution,
-                       image.rows-(landmarks[i].y()-origin.y())*inv_resolution);
-    cv::circle(image,landmark,20,cv::Scalar(0,0,255),10);
+  //observations
+  for(int i=0; i<observations.size(); ++i){
+    cv::Point obs((observations[i]._position.x()-origin.x())*inv_resolution,
+                       image.rows-(observations[i]._position.y()-origin.y())*inv_resolution);
+    cv::circle(image,obs,20,cv::Scalar(0,0,255),10);
   }
 
   //estimated pose

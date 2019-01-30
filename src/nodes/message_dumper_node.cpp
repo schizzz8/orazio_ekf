@@ -12,7 +12,7 @@
 
 #include <Eigen/Geometry>
 
-typedef std::vector<lucrezio_simulation_environments::Model> Landmarks;
+typedef std::vector<lucrezio_simulation_environments::Model> ModelVector;
 
 class MessageDumperNode{
   public:
@@ -43,27 +43,20 @@ class MessageDumperNode{
       _seq++;
       _last_timestamp = logical_image_msg->header.stamp;
 
-      //serialize twist
-      char twist_filename[80];
-      sprintf(twist_filename,"twist_%lu.txt",_seq);
-      serializeTwist(twist_filename,nav_msg->twist.twist);
-
-      //serialize landmarks
-      Eigen::Isometry3f robot_pose = poseMsg2eigen(logical_image_msg->pose);
-      const Landmarks &landmarks=logical_image_msg->models;
-      char landmarks_filename[80];
-      sprintf(landmarks_filename,"landmarks_%lu.txt",_seq);
-      serializeLandmarks(landmarks_filename,robot_pose,landmarks);
+      //serialize velocities
+      char velocities_filename[80];
+      sprintf(velocities_filename,"twist_%lu.txt",_seq);
+      serializeVelocities(velocities_filename,nav_msg->twist.twist);
 
       //serialize observations
+      const ModelVector &models=logical_image_msg->models;
       char observations_filename[80];
       sprintf(observations_filename,"observations_%lu.txt",_seq);
-      serializeObservations(observations_filename,landmarks);
+      serializeObservations(observations_filename,models);
 
       //write to output file
       _out << _last_timestamp << " ";
-      _out << twist_filename << " ";
-      _out << landmarks_filename << " ";
+      _out << velocities_filename << " ";
       _out << observations_filename << std::endl;
 
       //heart beat
@@ -115,47 +108,25 @@ class MessageDumperNode{
       return iso;
     }
 
-    void serializeTwist(char* filename, const geometry_msgs::Twist& twist){
+    void serializeVelocities(char* filename, const geometry_msgs::Twist& twist){
       std::ofstream data;
       data.open(filename);
 
       data << twist.linear.x << " "
-           << twist.linear.y << " "
-           << twist.linear.z << " "
-           << twist.angular.x << " "
-           << twist.angular.y << " "
            << twist.angular.z << std::endl;
 
       data.close();
     }
 
-
-    void serializeLandmarks(char* filename,
-                            const Eigen::Isometry3f& robot_pose,
-                            const Landmarks &models){
-      std::ofstream data;
-      data.open(filename);
-
-      for(int i=0; i<models.size(); ++i){
-        const lucrezio_simulation_environments::Model &model = models[i];
-        tf::StampedTransform model_pose;
-        tf::poseMsgToTF(model.pose,model_pose);
-        const Eigen::Isometry3f model_transform=tfTransform2eigen(model_pose);
-        const Eigen::Vector3f model_position=robot_pose*model_transform.translation();
-        data << model_position.x() << " "
-             << model_position.y() << std::endl;
-
-      }
-      data.close();
-    }
-
     void serializeObservations(char* filename,
-                               const Landmarks &models){
+                               const ModelVector &models){
       std::ofstream data;
       data.open(filename);
 
       for(int i=0; i<models.size(); ++i){
         const lucrezio_simulation_environments::Model &model = models[i];
+
+        data << models[i].type << " ";
 
         tf::StampedTransform model_pose;
         tf::poseMsgToTF(model.pose,model_pose);

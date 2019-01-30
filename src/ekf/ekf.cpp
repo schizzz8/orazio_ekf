@@ -2,7 +2,10 @@
 
 EKF::EKF():
   _mu(Eigen::Vector3f::Zero()),
-  _sigma(Eigen::Matrix3f::Identity()*0.001){}
+  _sigma(Eigen::Matrix3f::Identity()*0.001){
+  _landmarks.clear();
+  EKF::readLandmarks();
+}
 
 void EKF::prediction(const float &ux, const float &utheta){
 
@@ -35,7 +38,7 @@ void EKF::prediction(const float &ux, const float &utheta){
   _sigma = A*_sigma*A.transpose() + B*sigma_u*B.transpose();
 }
 
-void EKF::correction(const Vector2fVector &landmarks, const Vector2fVector &observations){
+void EKF::correction(const ObservationVector& observations){
   if(observations.empty())
     return;
 
@@ -58,10 +61,10 @@ void EKF::correction(const Vector2fVector &landmarks, const Vector2fVector &obse
   for(int i=0; i<n_obs; ++i){
 
     //actual measurement zt
-    zt.block<2,1>(i*2,0) = observations[i];
+    zt.block<2,1>(i*2,0) = observations[i]._position;
 
     //predicted measurement ht
-    lt = landmarks[i];
+    lt = _landmarks[observations[i]._id];
     ht.block<2,1>(i*2,0) = inv_T*lt;
 
     //build Jacobian
@@ -114,4 +117,22 @@ Eigen::Matrix2f EKF::dRt(const float &a){
   dR << -sin(a),-cos(a),cos(a),-sin(a);
   dRt = dR.transpose();
   return dRt;
+}
+
+void EKF::readLandmarks(){
+  std::string filename = "/home/dede/source/lucrezio/lucrezio_simulation_environments/config/envs/orazio_world/object_locations.yaml";
+
+  YAML::Node map = YAML::LoadFile(filename);
+  for(YAML::const_iterator it=map.begin(); it!=map.end(); ++it){
+    const std::string &key=it->first.as<std::string>();
+
+    Eigen::Vector2f pos;
+    YAML::Node attributes = it->second;
+    YAML::Node position = attributes["position"];
+    for(int i=0; i<2; ++i){
+      pos(i) = position[i].as<float>();
+    }
+
+    _landmarks.insert(std::make_pair(key,pos));
+  }
 }
