@@ -4,5 +4,6 @@ add_executable(message_dumper_node
 
 target_link_libraries(message_dumper_node
   ${catkin_LIBRARIES}
+  yaml-cpp
 )
 

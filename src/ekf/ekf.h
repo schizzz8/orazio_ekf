@@ -4,7 +4,6 @@
 #include <Eigen/Geometry>
 #include <yaml-cpp/yaml.h>
 
-typedef std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> > Vector2fVector;
 typedef std::map<std::string,Eigen::Vector2f, std::less<std::string>,
 Eigen::aligned_allocator<std::pair<const std::string, Eigen::Vector2f> > > StringVector2fMap;
 
